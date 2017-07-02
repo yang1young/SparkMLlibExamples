@@ -22,7 +22,7 @@ data/
 .scala_dependencies
 .worksheet
 .idea/workspace.xml
-.idea/.name
+.idea/
 
 # Hive
 metastore_db/*
