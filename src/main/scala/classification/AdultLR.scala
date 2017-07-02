@@ -1,18 +1,23 @@
 package classification
 
-import org.apache.spark.ml.feature.StringIndexer
+import org.apache.spark.ml.Pipeline
+import org.apache.spark.ml.classification.RandomForestClassifier
+import org.apache.spark.ml.evaluation.BinaryClassificationEvaluator
+import org.apache.spark.ml.feature.{IndexToString, StringIndexer, VectorAssembler}
+import org.apache.spark.ml.tuning.{CrossValidator, ParamGridBuilder}
 import org.apache.spark.{SparkConf, SparkContext}
 import org.apache.spark.mllib.classification.SVMWithSGD
 import org.apache.spark.mllib.regression.LabeledPoint
+import org.apache.spark.sql.types._
 import org.apache.spark.sql.{SQLContext, SparkSession}
-
-
+import org.apache.spark.sql.functions._
 /**
   * Created by yang on 17-7-2.
+  * https://benfradet.github.io/blog/2015/12/16/Exploring-spark.ml-with-the-Titanic-Kaggle-competition
   */
 object AdultLR {
-  val trainPath = "/home/yang/JavaProject/SparkLearning/data/adult_train.csv"
-  val testPath = "/home/yang/JavaProject/SparkLearning/data/adult_test.csv"
+  val trainPath = "/home/yang/JavaProject/SparkMLlibExamples/src/main/resources/data/adult_train.csv"
+  val testPath = "/home/yang/JavaProject/SparkMLlibExamples/src/main/resources/data/adult_test.csv"
 
   def main(args: Array[String]): Unit = {
     val spark = SparkSession
@@ -27,15 +32,95 @@ object AdultLR {
   def dataPrepare(spark: SparkSession,filePath:String): Unit = {
 
     import spark.implicits._
-    val df = spark.sqlContext.read.format("com.databricks.spark.csv").option("header","true").load(filePath)
-    df.printSchema()
-    df.show(10)
-    val indexer = new StringIndexer()
-      .setInputCol("category")
-      .setOutputCol("categoryIndex")
+    val customSchema = StructType(Array(
+      StructField("age", IntegerType, true),
+      StructField("workclass", StringType, true),
+      StructField("fnlwgt", StringType, true),
+      StructField("education", StringType, true),
+      StructField("education-num", IntegerType, true),
+      StructField("marital-status", StringType, true),
+      StructField("occupation", StringType, true),
+      StructField("relationship", StringType, true),
+      StructField("race", StringType, true),
+      StructField("sex", StringType, true),
+      StructField("capital-gain", IntegerType, true),
+      StructField("capital-loss", IntegerType, true),
+      StructField("hours-per-week", IntegerType, true),
+      StructField("native-country", StringType, true),
+      StructField("label", StringType, true)
+    ))
 
-    val indexed = indexer.fit(df).transform(df)
-    indexed.show()
+    val originDF = spark.sqlContext.read.format("com.databricks.spark.csv").option("header","true").schema(customSchema)
+      .load(filePath)
+    val dropDF = originDF.drop(originDF.col("fnlwgt"))
+    val trainDF = dropDF.na.fill("0")
+    trainDF.printSchema()
+    val cols = trainDF.columns.map(trainDF(_)).reverse
+    val reversedDF = trainDF.select(cols:_*)
+    reversedDF.show(100)
+
+
+    val categoricalFeatColNames = Seq("native-country","sex","race","relationship","occupation","marital-status","education","workclass")
+    val stringIndexers = categoricalFeatColNames.map { colName =>
+      new StringIndexer()
+        .setInputCol(colName)
+        .setOutputCol(colName + "Indexed")
+        .fit(reversedDF)
+    }
+
+    val labelIndexer = new StringIndexer()
+      .setInputCol("label")
+      .setOutputCol("labelIndexed")
+      .fit(reversedDF)
+
+
+    val numericFeatColNames = Seq("hours-per-week","capital-loss","capital-gain", "education-num","age")
+
+//    val doubleDF = reversedDF.select(numericFeatColNames.map(
+//      c => col(c).cast("double")): _*)
+//    doubleDF.printSchema()
+//    val stringDF = reversedDF.select(categoricalFeatColNames.map(c => col(c)): _*)
+//    stringDF.printSchema()
+
+
+    val idxdCategoricalFeatColName = categoricalFeatColNames.map(_ + "Indexed")
+    val allIdxdFeatColNames = numericFeatColNames ++ idxdCategoricalFeatColName
+    val assembler = new VectorAssembler()
+      .setInputCols(Array(allIdxdFeatColNames: _*))
+      .setOutputCol("Features")
+
+    val randomForest = new RandomForestClassifier()
+      .setLabelCol("labelIndexed")
+      .setFeaturesCol("Features")
+
+    val labelConverter = new IndexToString()
+      .setInputCol("prediction")
+      .setOutputCol("predictedLabel")
+      .setLabels(labelIndexer.labels)
+
+    val piplineArray = stringIndexers.toArray++Array(labelIndexer, assembler, randomForest, labelConverter)
+    val pipeline = new Pipeline().setStages(piplineArray)
+
+    val paramGrid = new ParamGridBuilder()
+      .addGrid(randomForest.maxBins, Array(100, 108, 112))
+      .addGrid(randomForest.maxDepth, Array(4, 6, 8))
+      .addGrid(randomForest.impurity, Array("entropy", "gini"))
+      .build()
+
+    val evaluator = new BinaryClassificationEvaluator()
+      .setLabelCol("labelIndexed")
+      .setMetricName("areaUnderPR")
+
+    val cv = new CrossValidator()
+      .setEstimator(pipeline)
+      .setEvaluator(evaluator)
+      .setEstimatorParamMaps(paramGrid)
+      .setNumFolds(10)
+
+    val crossValidatorModel = cv.fit(reversedDF)
+    val predictions = crossValidatorModel.transform(reversedDF)
+
+
     // 设置迭代次数并进行进行训练
 //    val numIterations = 20
 //    val model = SVMWithSGD.train(parsedData, numIterations)
