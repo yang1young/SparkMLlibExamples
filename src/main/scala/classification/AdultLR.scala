@@ -159,4 +159,24 @@ capital-gain: continuous.
 capital-loss: continuous.
 hours-per-week: continuous.
 native-country: United-States, Cambodia, England, Puerto-Rico, Canada, Germany, Outlying-US(Guam-USVI-etc), India, Japan, Greece, South, China, Cuba, Iran, Honduras, Philippines, Italy, Poland, Jamaica, Vietnam, Mexico, Portugal, Ireland, France, Dominican-Republic, Laos, Ecuador, Taiwan, Haiti, Columbia, Hungary, Guatemala, Nicaragua, Scotland, Thailand, Yugoslavia, El-Salvador, Trinadad&Tobago, Peru, Hong, Holand-Netherlands.
- */
+
+ >50K, <=50K.
+StructField("A", IntegerType()),
+    StructField("B", DoubleType()),
+    StructField("C", StringType()),
+StructField("age",IntegerType()),
+StructField("workclass", StringType()),
+StructField("fnlwgt", DoubleType()),
+StructField("education", StringType()),
+StructField("education-num",IntegerType()
+StructField("marital-status", StringType()),
+StructField("occupation", StringType()),
+StructField("relationship", StringType()),
+StructField("race", StringType()),
+StructField("sex", StringType()),
+StructField("capital-gain", DoubleType()),
+StructField("capital-loss", DoubleType()),
+StructField("hours-per-week", DoubleType()),
+StructField("native-country", StringType()),
+StructField("label", StringType())
+*/
